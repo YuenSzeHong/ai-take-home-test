@@ -2,6 +2,8 @@
 
 Documenting steps taken to improve training speed and stability.
 
+![Generated MNIST samples from WandB epoch 19](images/generated_epoch_19.png)
+
 ---
 
 ## 1. GPU Acceleration

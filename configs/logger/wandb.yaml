@@ -3,3 +3,6 @@ wandb:
   project: Tests
   name: mnist-gan-${now:%Y%m%d-%H%M%S}
   save_dir: logs/
+  settings:
+    _target_: wandb.Settings
+    finish_timeout: 60

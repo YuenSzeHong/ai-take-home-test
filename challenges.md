@@ -158,3 +158,43 @@ RuntimeError: Training with multiple optimizers is only supported with manual op
 **Cause:** The template defaulted to `img_size: 32` (powers of 2 are common for GANs), but MNIST images are natively 28×28. Every image was being upscaled via `transforms.Resize(32)`, wasting compute.
 
 **Fix:** Changed `img_size` to 28 in both `configs/model/mnist_gan_model.yaml` and `configs/datamodule/mnist_datamodule.yaml` to match the native MNIST resolution. Also bumped `num_workers` from 0 to 4 for faster data loading.
+
+---
+
+## 12. WandB Runs Remaining Open After Errors
+
+**Symptom:** A run could remain marked as running when training or testing raised an exception.
+
+**Cause:** Logger finalization was only reached after successful training and testing.
+
+**Fix:** Wrapped the training and test phases in `try`/`except`/`finally`, report `success` or `failed`, and call each Lightning logger's `finalize(status)` from the `finally` block.
+
+---
+
+## 15. WandB Shutdown Hung During Upload Retry
+
+**Symptom:** The training process reached successful finalization but remained in the terminal while WandB retried an HTTP 500 upload timeout.
+
+**Cause:** `wandb.finish()` waits for pending uploads. A slow or unavailable WandB backend can keep retrying during shutdown.
+
+**Fix:** Set `wandb.Settings(finish_timeout=60)` in `configs/logger/wandb.yaml` and call the WandB SDK directly before any generic Lightning logger finalization. This ensures the timeout applies; any unsent local data remains available for `wandb sync`.
+
+---
+
+## 13. PyTorch 2.6: Testing Accidentally Restored an Old Checkpoint
+
+**Symptom:** Testing failed with `Weights only load failed` while loading an existing checkpoint.
+
+**Cause:** Lightning can automatically select a checkpoint when testing a connected model. Old checkpoints contain pickled model classes that PyTorch 2.6 rejects with its safer `weights_only=True` default.
+
+**Fix:** Pass the current in-memory `model` and `datamodule` explicitly to `trainer.test(..., ckpt_path=None)`, preventing Lightning from restoring an old checkpoint for the post-training test.
+
+---
+
+## 14. WandB Run Did Not Receive a Completion Signal
+
+**Symptom:** The WandB panel continued to show a run as active after local training had ended or failed.
+
+**Cause:** Lightning logger finalization alone did not reliably flush and close the WandB SDK run in this environment. In addition, cleanup could be skipped when `fit()` or `test()` raised an exception.
+
+**Fix:** Always finalize loggers from a `finally` block and explicitly call `wandb.finish(exit_code=...)` for WandB runs. Successful runs use exit code 0; failed runs use exit code 1.

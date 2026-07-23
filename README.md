@@ -36,6 +36,10 @@ Run summary:
 
 The run records step-level and epoch-level loss curves, epoch-level validation/test metrics, GPU/system metrics, and 16-image conditional sample grids under `gen_imgs`. The final sample grid is captioned `epoch_19` and shows recognizable digits with visible noise, which is expected from this small fully connected GAN. A convolutional DCGAN-style architecture would be the next improvement for sharper samples.
 
+Included sample output:
+
+![Generated MNIST samples from WandB epoch 19](images/generated_epoch_19.png)
+
 ### Challenges and fixes
 
 - **Python 3.14 and Hydra:** upgraded Hydra from the 1.3 release to the Hydra development version from GitHub because of the `LazyCompletionHelp`/`argparse` incompatibility.
@@ -43,7 +47,7 @@ The run records step-level and epoch-level loss curves, epoch-level validation/t
 - **Lightning 2.x compatibility:** replaced `LightningLoggerBase` with `Logger`, migrated deprecated Trainer options, handled nullable loggers, and used `trainer.loggers` for multiple logger instances.
 - **Multiple optimizers:** enabled manual optimization and retained a shared `step()` helper for generator/discriminator loss computation.
 - **Windows logging:** configured UTF-8 output to avoid GBK failures when Lightning emits Unicode messages.
-- **Runtime behavior:** implemented `test_step`, prevented invalid checkpoint selection during testing, and skipped sample generation when WandB is disabled.
+- **Runtime behavior:** implemented `test_step`, prevented invalid checkpoint selection during testing, skipped sample generation when WandB is disabled, and finalized loggers with success/failed status even when a run raises an exception. WandB is explicitly closed with `wandb.finish(exit_code=...)` and uses a bounded 60-second shutdown timeout.
 
 Detailed notes are available in [`challenges.md`](challenges.md) and [`training.md`](training.md).
 

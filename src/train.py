@@ -72,25 +72,31 @@ def train(config: DictConfig) -> Optional[float]:
         logger=logger,
     )
 
-    # Train the model
-    log.info("Starting training!")
-    trainer.fit(model=model, datamodule=datamodule)
+    status = "success"
+    try:
+        # Train the model
+        log.info("Starting training!")
+        trainer.fit(model=model, datamodule=datamodule)
 
-    # Evaluate model on test set, using the best model achieved during training
-    if config.get("test_after_training") and not config.trainer.get("fast_dev_run"):
-        log.info("Starting testing!")
-        trainer.test(ckpt_path=None)
-
-    # Make sure everything closed properly
-    log.info("Finalizing!")
-    utils.finish(
-        config=config,
-        model=model,
-        datamodule=datamodule,
-        trainer=trainer,
-        callbacks=callbacks,
-        logger=logger,
-    )
+        # Evaluate model on test set using the model's current state
+        if config.get("test_after_training") and not config.trainer.get("fast_dev_run"):
+            log.info("Starting testing!")
+            trainer.test(model=model, datamodule=datamodule, ckpt_path=None)
+    except Exception:
+        status = "failed"
+        raise
+    finally:
+        # Always finalize experiment loggers, including when fit/test fails.
+        log.info(f"Finalizing experiment loggers with status: {status}")
+        utils.finish(
+            config=config,
+            model=model,
+            datamodule=datamodule,
+            trainer=trainer,
+            callbacks=callbacks,
+            logger=logger,
+            status=status,
+        )
 
     # Print path to best checkpoint
     ckpt_callback = trainer.checkpoint_callbacks[0]

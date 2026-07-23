@@ -162,12 +162,21 @@ def finish(
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
     logger: List[pl.loggers.Logger],
+    status: str = "success",
 ) -> None:
-    """Makes sure everything closed properly."""
+    """Finalize experiment loggers with the run outcome."""
 
-    # without this sweeps with wandb logger might crash!
     for lg in logger:
-        if isinstance(lg, pl.loggers.wandb.WandbLogger):
-            import wandb
+        try:
+            if isinstance(lg, pl.loggers.wandb.WandbLogger):
+                # Call the SDK directly so the configured finish_timeout applies.
+                import wandb
 
-            wandb.finish()
+                wandb.finish(exit_code=0 if status == "success" else 1)
+            else:
+                lg.finalize(status)
+        except Exception:
+            # Logger cleanup must not hide the original training exception.
+            logging.getLogger(__name__).exception(
+                "Failed to finalize logger %s", type(lg).__name__
+            )
