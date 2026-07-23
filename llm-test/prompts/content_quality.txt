@@ -1,0 +1,1 @@
+Explain how backpropagation works in neural networks, including the mathematical derivation of the chain rule as applied to a simple 2-layer network with sigmoid activation. Then discuss why ReLU largely replaced sigmoid in deep networks, citing at least two specific problems with sigmoid and how ReLU addresses them.
