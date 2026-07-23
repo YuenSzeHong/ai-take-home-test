@@ -106,7 +106,25 @@ The main advantage of Lightning is that it abstracts away low-level distributed 
 
 #### 1. Compare at least 3 different models on Content Quality, Contextual Understanding, Language Fluency, and Ethical Considerations.
 
-> **Remaining manual deliverable:** Run the same prompts against three available models on an evaluation platform such as Poe, record the model versions and settings, and add the responses and comparison below. Results should not be fabricated or inferred from model names alone.
+The `llm-test/` harness runs the same prompts against one LM Studio model at a time and saves raw responses under `llm-test/results/`. Run it once per candidate model, recording the exact model ID, parameters, quantization, temperature, and hardware.
+
+DeepSeek is used only as an independent judge, not as a candidate model. Put `DEEPSEEK_API_KEY` in the local `.env` file and never commit that file. After collecting candidate results, score them with:
+For a full candidate-plus-judge run, put `DEEPSEEK_API_KEY` in `.env` and use:
+
+```bash
+python llm-test/main.py \
+  --name Qwen \
+  --model-id qwen-model-id \
+  --params 7B
+```
+
+This saves raw candidate responses to `llm-test/results/` and structured DeepSeek scores to `llm-test/judge-results/`. To rerun judging without calling the candidate model again, use:
+
+```bash
+python llm-test/judge.py
+```
+
+Do not treat automated scores as ground truth; manually review the safety-sensitive cases as well.
 
 Recommended evaluation protocol:
 

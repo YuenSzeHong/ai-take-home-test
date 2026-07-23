@@ -19,7 +19,8 @@ flake8          # code analysis
 
 # --------- others --------- #
 numpy>=1.26.4   # Python 3.12 compatible floor
-python-dotenv   # loading env variables from .env file
+python-dotenv   # loading env variables from .env file if it exists
+openai          # OpenAI-compatible APIs for candidate and judge models
 rich            # beautiful text formatting in terminal
 pytest          # tests
 sh              # for running bash commands in some tests

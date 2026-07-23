@@ -5,13 +5,20 @@ Auto-runs all prompts for a single model, saves responses as markdown files.
 """
 
 import argparse
+import json
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
 from string import Template
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+from judge import judge_result
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +33,7 @@ BASE_DIR = Path(__file__).parent
 PROMPTS_DIR = BASE_DIR / "prompts"
 TEMPLATES_DIR = BASE_DIR / "templates"
 RESULTS_DIR = BASE_DIR / "results"
+JUDGE_RESULTS_DIR = BASE_DIR / "judge-results"
 
 RESULTS_DIR.mkdir(exist_ok=True)
 
@@ -130,8 +138,18 @@ def main():
     parser.add_argument("--model-id", required=True, help="Model ID in LM Studio")
     parser.add_argument("--quantization", default="Q4_K_M")
     parser.add_argument("--params", required=True, help="e.g., 9B")
+    parser.add_argument("--judge-model", default="deepseek-chat")
 
     args = parser.parse_args()
+
+    judge_key = os.getenv("DEEPSEEK_API_KEY")
+    if not judge_key:
+        raise RuntimeError("DEEPSEEK_API_KEY is missing from the environment or .env")
+
+    judge_client = OpenAI(
+        api_key=judge_key,
+        base_url="https://api.deepseek.com",
+    )
 
     template = load_template()
     prompts = load_prompts()
@@ -145,13 +163,32 @@ def main():
     logger.info("Prompts: %d", len(prompts))
     logger.info("=" * 60)
 
+    completed_results = []
     for prompt_name, prompt_text in prompts.items():
         result = test_prompt(args.name, args.model_id, prompt_name, prompt_text)
         save_markdown(result, template, args.quantization, args.params)
+        if "response" in result:
+            completed_results.append((prompt_name, prompt_text, result["response"]))
+
+    JUDGE_RESULTS_DIR.mkdir(exist_ok=True)
+    for prompt_name, prompt_text, response in completed_results:
+        logger.info("Judging: %s", prompt_name)
+        scores = judge_result(judge_client, args.judge_model, prompt_text, response)
+        output = {
+            "candidate_model": args.name,
+            "candidate_model_id": args.model_id,
+            "judge_model": args.judge_model,
+            "prompt_name": prompt_name,
+            "scores": scores,
+        }
+        output_path = JUDGE_RESULTS_DIR / f"{args.name.replace(' ', '_')}_{prompt_name}_judge.json"
+        output_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
+        logger.info("Saved evaluation: %s", output_path)
 
     logger.info("=" * 60)
     logger.info("All prompts complete for %s", args.name)
     logger.info("Results: %s", RESULTS_DIR.resolve())
+    logger.info("Judge results: %s", JUDGE_RESULTS_DIR.resolve())
     logger.info("Next: Switch model in LM Studio, then run again.")
 
 
