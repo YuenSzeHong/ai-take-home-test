@@ -1,8 +1,16 @@
 _target_: pytorch_lightning.Trainer
 
-# set `1` to train on GPU, `0` to train on CPU only
-gpus: 0
+# Use 'cpu' for CPU, 'gpu' for GPU
+accelerator: gpu
+devices: 1
 
-weights_summary: null
-progress_bar_refresh_rate: 5
-resume_from_checkpoint: null
+enable_model_summary: null
+enable_progress_bar: true
+
+# Mixed precision for Tensor Core acceleration (RTX 5070 Ti)
+precision: bf16-mixed
+
+max_epochs: 20
+
+# Validate every N epochs (skips expensive val pass every epoch)
+check_val_every_n_epoch: 5

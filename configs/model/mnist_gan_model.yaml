@@ -6,10 +6,21 @@ b2: 0.999
 n_classes: 10
 latent_dim: 100
 channels: 1
-img_size: 32
+img_size: 28
 
-# TODO: instantiate the generator and discriminator objects with Hydra
-#       https://hydra.cc/docs/advanced/instantiate_objects/overview/
-generator: null
+# Instantiate the generator and discriminator objects with Hydra
+# See: https://hydra.cc/docs/advanced/instantiate_objects/overview/
 
-discriminator: null
+generator:
+  _target_: src.models.modules.generators.Generator
+  n_classes: ${..n_classes}
+  latent_dim: ${..latent_dim}
+  channels: ${..channels}
+  img_size: ${..img_size}
+
+
+discriminator:
+  _target_: src.models.modules.discriminators.Discriminator
+  n_classes: ${..n_classes}
+  channels: ${..channels}
+  img_size: ${..img_size}

@@ -107,6 +107,15 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Generated datasets and experiment outputs
+data/MNIST/
+logs/*
+!logs/.gitkeep
+wandb/
+ckpts/*
+!ckpts/.gitkeep
+config_tree.txt
+
 # Environments
 .env
 .venv

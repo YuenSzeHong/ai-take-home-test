@@ -21,6 +21,9 @@ class MNISTGANModel(LightningModule):
         self.discriminator = discriminator
         self.adversarial_loss = torch.nn.MSELoss()
 
+        # Lightning 2.0 requires manual optimization when using multiple optimizers
+        self.automatic_optimization = False
+
     def forward(self, z, labels) -> Tensor:
         return self.generator(z, labels)
 
@@ -37,71 +40,127 @@ class MNISTGANModel(LightningModule):
         )
         return [opt_g, opt_d], []
 
-    def training_step(self, batch, batch_idx, optimizer_idx) -> Union[Tensor, Dict[str, Any]]:
-        log_dict, loss = self.step(batch, batch_idx, optimizer_idx)
-        self.log_dict({"/".join(("train", k)): v for k, v in log_dict.items()})
-        return loss
+    def training_step(self, batch, batch_idx) -> None:
+        opt_g, opt_d = self.optimizers()
+
+        log_dict, g_loss, d_loss = self.step(batch, batch_idx)
+
+        # Train Generator
+        opt_g.zero_grad()
+        self.manual_backward(g_loss)
+        opt_g.step()
+
+        # Train Discriminator
+        opt_d.zero_grad()
+        self.manual_backward(d_loss)
+        opt_d.step()
+
+        self.log_dict(
+            {"/".join(("train", k)): v for k, v in log_dict.items()},
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            logger=True,
+            batch_size=batch[0].shape[0],
+        )
 
     def validation_step(self, batch, batch_idx) -> Union[Tensor, Dict[str, Any], None]:
-        log_dict, loss = self.step(batch, batch_idx)
-        self.log_dict({"/".join(("val", k)): v for k, v in log_dict.items()})
-        return None
+        log_dict, _, _ = self.step(batch, batch_idx)
+        self.log_dict(
+            {"/".join(("val", k)): v for k, v in log_dict.items()},
+            on_step=False,
+            on_epoch=True,
+            logger=True,
+            batch_size=batch[0].shape[0],
+        )
 
     def test_step(self, batch, batch_idx) -> Union[Tensor, Dict[str, Any], None]:
-        # TODO: if you have time, try implementing a test step
-        raise NotImplementedError
+        log_dict, _, _ = self.step(batch, batch_idx)
+        self.log_dict(
+            {"/".join(("test", k)): v for k, v in log_dict.items()},
+            on_step=False,
+            on_epoch=True,
+            logger=True,
+            batch_size=batch[0].shape[0],
+        )
 
-    def step(self, batch, batch_idx, optimizer_idx=None) -> Tuple[Dict[str, Tensor], Optional[Tensor]]:
-        # TODO: implement the step method of the GAN model.
-        #     : This function should return both a dictionary of losses
-        #     : and current loss of the network being optimised.
-        #     :
-        #     : When training with pytorch lightning, because we defined 2 optimizers in
-        #     : the `configure_optimizers` function above, we use the `optimizer_idx` parameter
-        #     : to keep a track of which network is being optimised.
+    def step(self, batch, batch_idx) -> Tuple[Dict[str, Tensor], Optional[Tensor], Optional[Tensor]]:
+        """
+        Single step that computes losses for both generator and discriminator.
+        Returns log_dict, g_loss, d_loss — callers use what they need
+        (training uses both losses for backward; val/test only need log_dict).
+        """
 
         imgs, labels = batch
         batch_size = imgs.shape[0]
 
-        log_dict = {}
-        loss = None
+        # adversarial ground truths
+        valid = torch.ones((batch_size, 1), device=self.device, dtype=imgs.dtype)
+        fake = torch.zeros((batch_size, 1), device=self.device, dtype=imgs.dtype)
 
-        # TODO: Create adversarial ground truths
+        # noise and labels for generator input
+        z = torch.randn(batch_size, self.hparams.latent_dim, device=self.device)
+        gen_labels = torch.randint(0, self.hparams.n_classes, (batch_size,), device=self.device)
 
-        # TODO: Create noise and labels for generator input
+        # Generator loss
+        gen_imgs = self(z, gen_labels)
+        pred_fake = self.discriminator(gen_imgs, gen_labels)
+        g_loss = self.adversarial_loss(pred_fake, valid)
 
-        if optimizer_idx == 0 or not self.training:
-            # TODO: generate images and calculate the adversarial loss for the generator
-            # HINT: when optimizer_idx == 0 the model is optimizing the generator
-            raise NotImplementedError
+        # Discriminator loss
+        pred_real = self.discriminator(imgs, labels)
+        d_real_loss = self.adversarial_loss(pred_real, valid)
+        pred_fake = self.discriminator(gen_imgs.detach(), gen_labels)
+        d_fake_loss = self.adversarial_loss(pred_fake, fake)
+        d_loss = (d_real_loss + d_fake_loss) / 2.0
 
-            # TODO: Generate a batch of images
+        log_dict = {
+            "g_loss": g_loss.detach(),
+            "d_loss": d_loss.detach(),
+        }
 
-            # TODO: Calculate loss to measure generator's ability to fool the discriminator
+        return log_dict, g_loss, d_loss
 
-        if optimizer_idx == 1 or not self.training:
-            # TODO: generate images and calculate the adversarial loss for the discriminator
-            # HINT: when optimizer_idx == 1 the model is optimizing the discriminator
-            raise NotImplementedError
+    def on_train_epoch_end(self):
+        """Generate sample images and log them to WandB (if available) at epoch end."""
+        # Skip if no wandb logger is active (avoids wasting GPU time between epochs)
+        has_wandb = any(
+            type(logger).__name__ == "WandbLogger"
+            for logger in self.trainer.loggers
+        )
+        if not has_wandb:
+            return
 
-            # TODO: Generate a batch of images
+        try:
+            import torchvision
+        except Exception:
+            return
 
-            # TODO: Calculate loss for real images
+        n_samples = 16
+        z = torch.randn(n_samples, self.hparams.latent_dim, device=self.device)
+        labels = torch.arange(0, n_samples, device=self.device) % self.hparams.n_classes
 
-            # TODO: Calculate loss for fake images
+        # Generate samples without building a graph or updating BatchNorm statistics.
+        was_training = self.training
+        self.eval()
+        with torch.no_grad():
+            gen_imgs = self(z, labels)
+        if was_training:
+            self.train()
 
-            # TODO: Calculate total discriminator loss
+        # denormalize from [-1, 1] to [0, 1]
+        gen_imgs = (gen_imgs + 1.0) / 2.0
 
-        return log_dict, loss
+        # make grid
+        grid = torchvision.utils.make_grid(gen_imgs.cpu(), nrow=4)
+        # convert to HWC uint8 numpy array
+        img_np = (grid.permute(1, 2, 0).numpy() * 255).astype('uint8')
 
-    def on_epoch_end(self):
-        # TODO: implement functionality to log predicted images to wandb
-        #     : at the end of each epoch
-
-        # TODO: Create fake images
-
-        for logger in self.trainer.logger:
+        for logger in self.trainer.loggers:
             if type(logger).__name__ == "WandbLogger":
-                # TODO: log fake images to wandb (https://docs.wandb.ai/guides/track/log/media)
-                #     : replace `None` with your wandb Image object
-                logger.experiment.log({"gen_imgs": None})
+                try:
+                    logger.experiment.log({
+                        "gen_imgs": [wandb.Image(img_np, caption=f"epoch_{self.current_epoch}")]
+                    }, step=self.global_step)
+                except Exception:
+                    pass

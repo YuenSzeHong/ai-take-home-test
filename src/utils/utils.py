@@ -1,5 +1,4 @@
 import logging
-import os
 import warnings
 from typing import List, Sequence
 
@@ -55,8 +54,8 @@ def extras(config: DictConfig) -> None:
     if config.trainer.get("fast_dev_run"):
         log.info("Forcing debugger friendly configuration! <config.trainer.fast_dev_run=True>")
         # Debuggers don't like GPUs or multiprocessing
-        if config.trainer.get("gpus"):
-            config.trainer.gpus = 0
+        if config.trainer.get("accelerator") == "gpu":
+            config.trainer.accelerator = "cpu"
         if config.datamodule.get("pin_memory"):
             config.datamodule.pin_memory = False
         if config.datamodule.get("num_workers"):
@@ -118,7 +117,7 @@ def log_hyperparameters(
     datamodule: pl.LightningDataModule,
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
-    logger: List[pl.loggers.LightningLoggerBase],
+    logger: List[pl.loggers.Logger],
 ) -> None:
     """This method controls which parameters from Hydra config are saved by Lightning loggers.
 
@@ -147,12 +146,13 @@ def log_hyperparameters(
     )
 
     # send hparams to all loggers
-    trainer.logger.log_hyperparams(hparams)
+    if trainer.logger:
+        trainer.logger.log_hyperparams(hparams)
 
-    # disable logging any more hyperparameters for all loggers
-    # this is just a trick to prevent trainer from logging hparams of model,
-    # since we already did that above
-    trainer.logger.log_hyperparams = empty
+        # disable logging any more hyperparameters for all loggers
+        # this is just a trick to prevent trainer from logging hparams of model,
+        # since we already did that above
+        trainer.logger.log_hyperparams = empty
 
 
 def finish(
@@ -161,7 +161,7 @@ def finish(
     datamodule: pl.LightningDataModule,
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
-    logger: List[pl.loggers.LightningLoggerBase],
+    logger: List[pl.loggers.Logger],
 ) -> None:
     """Makes sure everything closed properly."""
 
