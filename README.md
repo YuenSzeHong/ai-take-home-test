@@ -53,6 +53,53 @@ Included sample output:
 
 Detailed notes are available in [`challenges.md`](challenges.md) and [`training.md`](training.md).
 
+### Bonus experiments
+
+Three additional experiments extend the baseline with a diffusion model and
+CIFAR-10. The following are **predicted results** based on model architecture
+and dataset characteristics; they will be updated with actual WandB outputs
+once the runs complete.
+
+#### MNIST diffusion (20 epochs, ~2.4M params)
+
+| Metric | Predicted |
+|--------|-----------|
+| Final `train/loss` | ~0.015 |
+| Final `val/loss` | ~0.018 |
+| Expected behavior | Smooth monotonic loss curve, clean digit generation by epoch 5-10 |
+
+Diffusion typically produces sharper MNIST digits than the MLP GAN because
+the UNet denoiser is convolutional and the iterative sampling process
+smooths artifacts.
+
+#### CIFAR-10 GAN (50 epochs, ~15M params)
+
+| Metric | Predicted |
+|--------|-----------|
+| Final `train/g_loss` | ~0.3-0.5 |
+| Final `train/d_loss` | ~0.1-0.2 |
+| Expected behavior | Loss oscillation typical of GANs; recognizable color blobs by epoch 30-40 |
+
+CIFAR-10 is significantly harder than MNIST. The fully-connected generator
+and discriminator struggle with 32×32×3 images; expect coarse, blurry outputs
+rather than photorealistic samples.
+
+#### CIFAR-10 diffusion (50 epochs, ~840K params)
+
+| Metric | Predicted |
+|--------|-----------|
+| Final `train/loss` | ~0.025 |
+| Final `val/loss` | ~0.030 |
+| Expected behavior | Smooth loss curve; recognizable but blurry color images by epoch 40-50 |
+
+The small UNet makes efficient use of parameters. Diffusion on CIFAR-10
+should produce the most visually coherent outputs of the three bonus
+experiments, though far from state-of-the-art given the 20-minute training
+time and tiny architecture.
+
+> **Update after runs:** replace predicted values with actual WandB metrics
+> and add generated sample images.
+
 ## Answers
 
 ### GAN Model Questions
