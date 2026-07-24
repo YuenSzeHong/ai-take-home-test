@@ -1,7 +1,7 @@
 wandb:
   _target_: pytorch_lightning.loggers.WandbLogger
   project: Tests
-  name: mnist-gan-${now:%Y%m%d-%H%M%S}
+  name: ${now:%Y%m%d-%H%M%S}-${hydra:job.override_dirname}
   save_dir: logs/
   settings:
     _target_: wandb.Settings

@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /model: cifar10_diffusion_model.yaml
+  - override /model: cifar10_gan_model.yaml
   - override /datamodule: cifar10_datamodule.yaml
 
 trainer:

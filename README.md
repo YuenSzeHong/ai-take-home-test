@@ -256,7 +256,27 @@ To make the model train you will need to do a few things:
 - [x] Complete the implementation of the model's `step` method
 - [x] Implement logging functionality to view step/epoch loss curves and generated samples during training using the Lightning `on_train_epoch_end` hook and [Weights & Biases](https://wandb.ai/site). WandB is enabled by default; use `logger=null` to disable it.
 - [x] Answer the GAN and deployment questions below
-- [ ] Run and document the external three-model LLM comparison below
+- [x] Run and document the external three-model LLM comparison
+
+### Open-ended bonus: CIFAR-10 and diffusion
+
+Four experiments available:
+
+```bash
+# Baseline GAN on MNIST
+python run.py
+
+# Bonus: GAN on CIFAR-10
+python run.py experiment=train_cifar10_gan.yaml
+
+# Bonus: Diffusion on MNIST
+python run.py experiment=train_mnist_diffusion.yaml
+
+# Bonus: Diffusion on CIFAR-10
+python run.py experiment=train_cifar10_diffusion.yaml
+```
+
+Each writes to a separate WandB run. Run them sequentially on a single GPU; all models are under 2.5M parameters.
 
 **All implementation tasks in the code are marked with** `TODO`
 

@@ -3,6 +3,9 @@
 
 # Large data, see gs://pantheon-models/voice-conversion/data
 data/pretrained_vocoders
+data/MNIST/
+data/cifar-10*
+data/*.tar.gz
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

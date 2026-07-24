@@ -161,6 +161,18 @@ RuntimeError: Training with multiple optimizers is only supported with manual op
 
 ---
 
+## 12. CIFAR-10 Download
+
+**Symptom:** PyTorch downloads CIFAR-10 from the University of Toronto at ~50 KB/s, taking 40+ minutes. The server is unreliable and drops connections.
+
+**Fix:** Pre-download the dataset with aria2:
+```powershell
+aria2c -x 1 -d "$env:USERPROFILE\.cache\torch\data" "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
+```
+PyTorch checks this cache directory first. If already downloaded and valid, it skips the network fetch entirely.
+
+---
+
 ## 12. WandB Runs Remaining Open After Errors
 
 **Symptom:** A run could remain marked as running when training or testing raised an exception.
