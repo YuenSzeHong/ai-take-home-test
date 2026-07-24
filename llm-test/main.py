@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Pantheon Lab LLM Evaluation Script
-Auto-runs all prompts for a single model, saves responses as markdown files.
+Runs all prompts against pre-configured models in LM Studio, then judges results with DeepSeek.
 """
 
-import argparse
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -15,8 +15,6 @@ from string import Template
 
 from dotenv import load_dotenv
 from openai import OpenAI
-
-from judge import judge_result
 
 load_dotenv()
 
@@ -27,169 +25,253 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-client = OpenAI(base_url="http://127.0.0.1:1234/v1", api_key="lm-studio")
+# ---------------------------------------------------------------------------
+# Configuration – edit the models list to change which candidate models are tested
+# ---------------------------------------------------------------------------
+MODELS = [
+    {
+        "name": "Qwen3.5 9B",
+        "model_id": "qwen/qwen3.5-9b",
+        "quantization": "Q4_K_M",
+        "params": "9B"
+    },
+    {
+        "name": "Qwen3.5 4B",
+        "model_id": "qwen/qwen3.5-4b",
+        "quantization": "Q4_K_M",
+        "params": "4B"
+    },
+    {
+        "name": "GPT-OSS 20B",
+        "model_id": "openai/gpt-oss-20b",
+        "quantization": "MXFP4",
+        "params": "20B"
+    },
+]
 
+JUDGE_MODEL = "deepseek-v4-pro"
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 PROMPTS_DIR = BASE_DIR / "prompts"
 TEMPLATES_DIR = BASE_DIR / "templates"
 RESULTS_DIR = BASE_DIR / "results"
 JUDGE_RESULTS_DIR = BASE_DIR / "judge-results"
 
-RESULTS_DIR.mkdir(exist_ok=True)
+# ---------------------------------------------------------------------------
+# Clients
+# ---------------------------------------------------------------------------
+candidate_client = OpenAI(
+    base_url="http://127.0.0.1:1234/v1",
+    api_key="lm-studio",
+)
 
+judge_key = os.getenv("DEEPSEEK_API_KEY")
+if not judge_key:
+    raise RuntimeError("DEEPSEEK_API_KEY missing – set it in .env or as an environment variable")
 
+judge_client = OpenAI(
+    api_key=judge_key,
+    base_url="https://api.deepseek.com",
+)
+
+# ---------------------------------------------------------------------------
+# Load prompts and template
+# ---------------------------------------------------------------------------
 def load_template() -> Template:
-    """Load markdown template."""
-    template_path = TEMPLATES_DIR / "eval_template.md"
-    if not template_path.exists():
-        logger.error("Template not found: %s", template_path)
-        raise FileNotFoundError(f"Template missing: {template_path}")
-    return Template(template_path.read_text(encoding="utf-8"))
+    return Template((TEMPLATES_DIR / "eval_template.md").read_text(encoding="utf-8"))
 
 
 def load_prompts() -> dict[str, str]:
-    """Load all prompt files from prompts/ directory."""
     prompts = {}
     for f in sorted(PROMPTS_DIR.glob("*.txt")):
+        if f.stem == "judge":
+            continue  # skip the judge prompt, it is not a candidate prompt
         prompts[f.stem] = f.read_text(encoding="utf-8").strip()
-    if not prompts:
-        logger.warning("No prompt files found in %s", PROMPTS_DIR)
     return prompts
 
 
-def test_prompt(model_name: str, model_id: str, prompt_name: str, prompt_text: str) -> dict:
-    """Test a single prompt."""
-    logger.info("-" * 50)
-    logger.info("Prompt: %s", prompt_name)
-
-    start = time.perf_counter()
-
-    try:
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[{"role": "user", "content": prompt_text}],
-            temperature=0.7,
-            max_tokens=2048
-        )
-
-        elapsed = time.perf_counter() - start
-
-        return {
-            "model_name": model_name,
-            "model_id": model_id,
-            "prompt_name": prompt_name,
-            "timestamp": datetime.now().isoformat(),
-            "response_time": round(elapsed, 2),
-            "tokens_prompt": response.usage.prompt_tokens,
-            "tokens_completion": response.usage.completion_tokens,
-            "tokens_total": response.usage.total_tokens,
-            "prompt": prompt_text,
-            "response": response.choices[0].message.content
-        }
-
-    except Exception as e:
-        logger.error("Failed: %s", e)
-        return {
-            "model_name": model_name,
-            "model_id": model_id,
-            "prompt_name": prompt_name,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+def load_judge_prompt() -> Template:
+    return Template((PROMPTS_DIR / "judge.txt").read_text(encoding="utf-8"))
 
 
-def save_markdown(result: dict, template: Template, quantization: str, params: str) -> Path:
-    """Save result as markdown using template."""
+# ---------------------------------------------------------------------------
+# Candidate evaluation
+# ---------------------------------------------------------------------------
+def run_candidate(model: dict, prompts: dict[str, str], template: Template) -> list[dict]:
+    logger.info("=" * 60)
+    logger.info("Testing candidate: %s (%s)", model["name"], model["model_id"])
+    logger.info("Prompts: %d", len(prompts))
+    logger.info("=" * 60)
+
+    results = []
+    for prompt_name, prompt_text in prompts.items():
+        logger.info("-" * 40)
+        logger.info("Prompt: %s", prompt_name)
+        start = time.perf_counter()
+
+        try:
+            resp = candidate_client.chat.completions.create(
+                model=model["model_id"],
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0.7,
+                max_tokens=2048,
+            )
+            elapsed = time.perf_counter() - start
+            result = {
+                "model_name": model["name"],
+                "model_id": model["model_id"],
+                "prompt_name": prompt_name,
+                "timestamp": datetime.now().isoformat(),
+                "response_time": round(elapsed, 2),
+                "tokens_prompt": resp.usage.prompt_tokens,
+                "tokens_completion": resp.usage.completion_tokens,
+                "tokens_total": resp.usage.total_tokens,
+                "prompt": prompt_text,
+                "response": resp.choices[0].message.content,
+            }
+        except Exception as e:
+            logger.error("Failed: %s", e)
+            result = {
+                "model_name": model["name"],
+                "model_id": model["model_id"],
+                "prompt_name": prompt_name,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        save_candidate_result(result, template, model)
+        results.append(result)
+
+    logger.info("=" * 60)
+    logger.info("Candidate complete: %s", model["name"])
+    return results
+
+
+def save_candidate_result(result: dict, template: Template, model: dict) -> Path:
     safe_model = result["model_name"].replace(" ", "_")
     safe_prompt = result["prompt_name"]
 
     if "error" in result:
-        filepath = RESULTS_DIR / f"{safe_model}_{safe_prompt}_ERROR.md"
+        path = RESULTS_DIR / f"{safe_model}_{safe_prompt}_ERROR.md"
         content = f"""# {result['model_name']} — {result['prompt_name']} — ERROR
-
 **Timestamp:** {result['timestamp']}
 **Error:** {result['error']}
 """
     else:
-        filepath = RESULTS_DIR / f"{safe_model}_{safe_prompt}.md"
+        path = RESULTS_DIR / f"{safe_model}_{safe_prompt}.md"
         content = template.substitute(
             model_name=result["model_name"],
             prompt_name=result["prompt_name"],
             model_id=result["model_id"],
-            params=params,
-            quantization=quantization,
+            params=model["params"],
+            quantization=model["quantization"],
             timestamp=result["timestamp"],
             response_time=result["response_time"],
             tokens_prompt=result["tokens_prompt"],
             tokens_completion=result["tokens_completion"],
             tokens_total=result["tokens_total"],
             prompt=result["prompt"],
-            response=result["response"]
+            response=result["response"],
         )
 
-    filepath.write_text(content, encoding="utf-8")
-    logger.info("Saved: %s", filepath)
-    return filepath
+    path.write_text(content, encoding="utf-8")
+    logger.info("Saved: %s", path)
+    return path
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate LLM models via LM Studio")
-    parser.add_argument("--name", required=True, help="Model display name")
-    parser.add_argument("--model-id", required=True, help="Model ID in LM Studio")
-    parser.add_argument("--quantization", default="Q4_K_M")
-    parser.add_argument("--params", required=True, help="e.g., 9B")
-    parser.add_argument("--judge-model", default="deepseek-chat")
+# ---------------------------------------------------------------------------
+# Independent judging
+# ---------------------------------------------------------------------------
+def parse_response_from_md(path: Path) -> tuple[str, str] | None:
+    """Extract prompt and response from a saved candidate Markdown file."""
+    text = path.read_text(encoding="utf-8")
+    prompt_match = re.search(r"## Prompt\s*\n\s*(.*?)\s*\n## Response", text, re.DOTALL)
+    resp_match = re.search(r"## Response\s*\n\s*(.*?)\s*\n---", text, re.DOTALL)
+    if not prompt_match or not resp_match:
+        return None
+    return prompt_match.group(1).strip(), resp_match.group(1).strip()
 
-    args = parser.parse_args()
 
-    judge_key = os.getenv("DEEPSEEK_API_KEY")
-    if not judge_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is missing from the environment or .env")
+def run_judge(result_path: Path) -> dict | None:
+    parsed = parse_response_from_md(result_path)
+    if not parsed:
+        logger.warning("Skipping unparseable result: %s", result_path.name)
+        return None
 
-    judge_client = OpenAI(
-        api_key=judge_key,
-        base_url="https://api.deepseek.com",
+    prompt_text, response_text = parsed
+    judge_prompt = load_judge_prompt().substitute(prompt=prompt_text, response=response_text)
+
+    resp = judge_client.chat.completions.create(
+        model=JUDGE_MODEL,
+        messages=[{"role": "user", "content": judge_prompt}],
+        temperature=0,
+        max_tokens=4096,
     )
+    content = resp.choices[0].message.content or ""
+    if not content.strip():
+        logger.error("Judge returned empty response for %s", result_path.name)
+        return None
+    content = content.strip()
+    # Replace em-dashes that can break JSON or downstream display
+    content = content.replace("\u2014", "--")
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content).strip()
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        logger.error("Judge returned invalid JSON. Raw response (%d chars): %s", len(content), content[:500])
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main() -> None:
+    RESULTS_DIR.mkdir(exist_ok=True)
+    JUDGE_RESULTS_DIR.mkdir(exist_ok=True)
 
     template = load_template()
     prompts = load_prompts()
-
     if not prompts:
-        logger.error("No prompts to test. Create .txt files in %s/", PROMPTS_DIR)
+        logger.error("No prompt files found in %s", PROMPTS_DIR)
         return
 
-    logger.info("=" * 60)
-    logger.info("Testing: %s", args.name)
-    logger.info("Prompts: %d", len(prompts))
-    logger.info("=" * 60)
+    for model in MODELS:
+        run_candidate(model, prompts, template)
 
-    completed_results = []
-    for prompt_name, prompt_text in prompts.items():
-        result = test_prompt(args.name, args.model_id, prompt_name, prompt_text)
-        save_markdown(result, template, args.quantization, args.params)
-        if "response" in result:
-            completed_results.append((prompt_name, prompt_text, result["response"]))
+        # Judge the newly generated results for this candidate
+        safe_name = model["name"].replace(" ", "_")
+        for prompt_name in prompts:
+            result_path = RESULTS_DIR / f"{safe_name}_{prompt_name}.md"
+            if not result_path.exists():
+                continue
 
-    JUDGE_RESULTS_DIR.mkdir(exist_ok=True)
-    for prompt_name, prompt_text, response in completed_results:
-        logger.info("Judging: %s", prompt_name)
-        scores = judge_result(judge_client, args.judge_model, prompt_text, response)
-        output = {
-            "candidate_model": args.name,
-            "candidate_model_id": args.model_id,
-            "judge_model": args.judge_model,
-            "prompt_name": prompt_name,
-            "scores": scores,
-        }
-        output_path = JUDGE_RESULTS_DIR / f"{args.name.replace(' ', '_')}_{prompt_name}_judge.json"
-        output_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
-        logger.info("Saved evaluation: %s", output_path)
+            logger.info("Judging: %s — %s", model["name"], prompt_name)
+            try:
+                scores = run_judge(result_path)
+            except Exception as e:
+                logger.error("Judge failed for %s: %s", result_path.name, e)
+                continue
+
+            output = {
+                "candidate_model": model["name"],
+                "candidate_model_id": model["model_id"],
+                "judge_model": JUDGE_MODEL,
+                "prompt_name": prompt_name,
+                "scores": scores,
+            }
+            out_path = JUDGE_RESULTS_DIR / f"{safe_name}_{prompt_name}_judge.json"
+            out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+            logger.info("Saved evaluation: %s", out_path)
 
     logger.info("=" * 60)
-    logger.info("All prompts complete for %s", args.name)
-    logger.info("Results: %s", RESULTS_DIR.resolve())
+    logger.info("All models and prompts complete.")
+    logger.info("Results:       %s", RESULTS_DIR.resolve())
     logger.info("Judge results: %s", JUDGE_RESULTS_DIR.resolve())
-    logger.info("Next: Switch model in LM Studio, then run again.")
 
 
 if __name__ == "__main__":
