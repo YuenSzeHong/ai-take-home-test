@@ -1,0 +1,6 @@
+# @package _global_
+
+defaults:
+  - override /model: mnist_diffusion_model.yaml
+
+seed: 42
