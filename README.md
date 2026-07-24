@@ -55,132 +55,158 @@ Detailed notes are available in [`challenges.md`](challenges.md) and [`training.
 
 ### GAN Model Questions
 
-#### 1. What is the role of the discriminator in a GAN model? Use this project's discriminator as an example.
+#### 1. Role of the discriminator in a GAN model
 
-The discriminator is a binary classifier that distinguishes real images from the dataset from fake images produced by the generator. In this implementation it returns a scalar score for each image-label pair. Because the model uses `MSELoss` with least-squares GAN targets, the score is trained toward 1 for real images and 0 for generated images; it is not passed through a sigmoid and should not be interpreted as a calibrated probability.
+The discriminator is a binary classifier that distinguishes real images
+from the dataset from fake images produced by the generator. In this
+implementation it returns a scalar score for each image-label pair.
+Because the model uses `MSELoss` with least-squares GAN targets, the
+score is trained toward 1 for real images and 0 for generated images;
+it is not passed through a sigmoid and should not be interpreted as a
+calibrated probability.
 
-In this MNIST GAN project, the discriminator takes a 28×28 grayscale image together with its digit label. During training it sees real MNIST images and fake images from the generator. The generator tries to make the discriminator assign generated images a real target score. This adversarial feedback is the core of conditional GAN training.
+In this MNIST GAN project, the discriminator takes a 28×28 grayscale
+image together with its digit label. During training it sees real MNIST
+images and fake images from the generator. The generator tries to make
+the discriminator assign generated images a real target score. This
+adversarial feedback is the core of conditional GAN training.
 
-#### 2. The generator takes `noise` and `labels`. What are these and how are they used to generate the number 5 at inference?
+#### 2. Generator inputs `noise` and `labels`
 
 | Input | Description |
 |-------|-------------|
-| `noise` | Random latent vector (∼ standard normal distribution). Provides randomness so each run produces a different-looking digit. |
+| `noise` | Random latent vector from a standard normal distribution. Provides randomness so each run produces a different-looking digit. |
 | `labels` | Conditional class label (0–9) telling the generator which digit to produce. Passed through an embedding or one-hot encoding. |
 
-**To generate the number 5 at inference time:**
-  1. Sample a noise vector from N(0, 1) (e.g., 100 dimensions).
-  2. Set the label to 5.
-  3. Feed both noise and label into the generator.
-  4. The generator outputs a 28×28 image of the digit "5".
+To generate the number 5 at inference time:
 
-This is the standard inference procedure for a **Conditional GAN (CGAN)**, where the label controls the class of the generated output.
+1. Sample a noise vector from N(0, 1), e.g. 100 dimensions.
+2. Set the label to 5.
+3. Feed both noise and label into the generator.
+4. The generator outputs a 28×28 image of the digit "5".
 
-#### 3. What steps are needed to deploy a model into production?
+This is standard inference for a Conditional GAN (CGAN), where the
+label controls the class of the generated output.
+
+#### 3. Steps to deploy a model into production
 
 | Step | Description |
 |------|-------------|
-| Model Export | Convert the trained model to a deployment-friendly format (TorchScript, ONNX, or save as a checkpoint). |
-| Inference Optimization | Apply quantization, pruning, or use acceleration frameworks like TensorRT or vLLM to reduce latency. |
-| API Wrapping | Expose the model via a REST API (FastAPI/Flask) or gRPC for high-performance serving. |
-| Containerization | Package the application with Docker to ensure environment consistency across dev/staging/prod. |
+| Model Export | Convert the trained model to a deployment-friendly format such as TorchScript, ONNX, or a checkpoint. |
+| Inference Optimization | Apply quantization, pruning, or acceleration frameworks such as TensorRT or vLLM to reduce latency. |
+| API Wrapping | Expose the model via a REST API with FastAPI/Flask, or gRPC for high-performance serving. |
+| Containerization | Package with Docker for environment consistency across development, staging, and production. |
 | Deployment | Deploy to Kubernetes, AWS Lambda, or cloud VMs with auto-scaling configured. |
-| Monitoring & Logging | Track inference latency, throughput, error rates, and set up alerts. |
+| Monitoring and Logging | Track inference latency, throughput, error rates, and configure alerts. |
 | Versioning | Use MLflow or DVC for model version control, enabling A/B testing and rollback. |
 
-#### 4. When training with multiple GPUs, how do you ensure data is allocated to the correct GPU in PyTorch Lightning?
+#### 4. Multi-GPU data allocation in PyTorch Lightning
 
-PyTorch Lightning handles most device placement automatically, but here are the key points:
+PyTorch Lightning handles most device placement automatically:
 
 | Area | How Lightning Handles It |
 |------|--------------------------|
-| Distributed Init | Set `accelerator="gpu"`, `devices=N`, and an appropriate distributed strategy such as `strategy="ddp"`. Lightning initializes the distributed process group. |
-| Model & Loss | `self` (the model) is moved to the correct device automatically. No manual `.to(device)` calls needed. |
+| Distributed Init | Set `accelerator="gpu"`, `devices=N`, and a strategy such as `strategy="ddp"`. Lightning initializes the process group. |
+| Model and Loss | `self` (the model) is moved to the correct device automatically. No manual `.to(device)` calls are needed. |
 | Data | In `training_step`, the `batch` is already on the correct GPU. |
-| Manual Tensors | Create tensors on the fly using `self.device`: `torch.randn(batch_size, latent_dim, device=self.device)` |
+| Manual Tensors | Create tensors on the fly with `self.device`: `torch.randn(batch_size, latent_dim, device=self.device)`. |
 | Cross-GPU Sync | Use `self.all_gather()` to aggregate tensors across multiple GPUs. |
 
-The main advantage of Lightning is that it abstracts away low-level distributed training details, letting you focus on the research logic rather than device management.
+Lightning abstracts away low-level distributed training details, letting
+you focus on the research logic rather than device management.
 
 ### LLM Questions
 
-#### 1. Compare at least 3 different models on Content Quality, Contextual Understanding, Language Fluency, and Ethical Considerations.
+#### 1. Model comparison on content, context, fluency, and ethics
 
-**Completed.** Three models were evaluated through LM Studio and scored by DeepSeek V4 Pro. Full candidate responses are in `llm-test/results/` and structured scores in `llm-test/judge-results/`.
+Three models were evaluated through LM Studio and scored by
+DeepSeek V4 Pro. Full candidate responses are in `llm-test/results/`
+and structured scores in `llm-test/judge-results/`.
 
-**Setup:** All models evaluated on the same hardware (RTX 5070 Ti) through LM Studio's OpenAI-compatible API. DeepSeek V4 Pro served as an independent blind judge using a fixed 1-5 rubric. Judge temperature was 0 for determinism.
+All models were evaluated on the same hardware (RTX 5070 Ti) through
+LM Studio's OpenAI-compatible API. DeepSeek V4 Pro served as an
+independent blind judge using a fixed 1–5 rubric with temperature 0
+for determinism.
 
-| Model | Content Quality | Contextual Understanding | Language Fluency | Ethical Behavior |
-|---|---|---|---|---|
+| Model | Content | Context | Fluency | Ethics |
+|---|---:|---:|---:|---:|
 | Qwen3.5 4B (Q4\_K\_M) | 4.4 | 4.4 | 5.0 | 5.0 |
 | Qwen3.5 9B (Q4\_K\_M) | 4.2 | 4.2 | 4.8 | 5.0 |
 | GPT-OSS 20B (MXFP4) | 2.4 | 4.2 | 4.8 | 4.2 |
 
-**Key findings:**
+Key findings:
 
-- All three models score strongly on language fluency and ethical behavior for most prompts.
-- The technical backpropagation-derivation prompt is the hardest discriminator — all models scored 1-2 on content quality there, with GPT-OSS 20B performing worst.
-- GPT-OSS 20B scored lower on ethics (3/5 for political astroturfing prompt), while both Qwen3.5 models received 5/5 across safety prompts.
-- The 4B Qwen3.5 slightly outperformed the 9B variant on average — likely due to the 9B model's response being cut short by the 2048-token limit on the technical prompt.
+- All three models score strongly on fluency and ethics for most
+  prompts.
+- The technical backpropagation prompt is the hardest discriminator:
+  all models scored 1–2 on content quality there, with GPT-OSS 20B
+  performing worst.
+- GPT-OSS 20B scored lower on ethics (3/5 for the political
+  astroturfing prompt), while both Qwen3.5 models received 5/5
+  across safety prompts.
+- The 4B Qwen3.5 slightly outperformed the 9B variant because the
+  9B response was cut short by the 2048-token limit on the technical
+  prompt.
 
-**Methodology:** Each model received the same five prompts with identical parameters (temperature=0.7, max\_tokens=2048). Responses were saved as Markdown and scored by a blind DeepSeek V4 Pro judge using a fixed rubric. The judge was excluded from the candidate set and had no access to model identities. See `llm-test/main.py` for the harness and `llm-test/prompts/judge.txt` for the rubric.
+Methodology: each model received the same five prompts with identical
+parameters (temperature 0.7, max\_tokens 2048). Responses were saved
+as Markdown and scored by a blind DeepSeek V4 Pro judge using a fixed
+rubric. The judge was excluded from the candidate set and had no
+access to model identities. See `llm-test/main.py` for the harness
+and `llm-test/prompts/judge.txt` for the rubric.
 
 ---
 
-#### 2. What parameters can be used to control model responses? Explain in detail.
+#### 2. Parameters that control model responses
 
-1. Use the same system instruction, user prompt, temperature, and maximum output length for every model.
-2. Test factual summarization, ambiguous context resolution, structured writing, and a safety-sensitive prompt.
-3. Save the raw responses and record the date, model version, parameters, and any platform-specific system prompt.
-4. Compare each model on content quality, contextual understanding, language fluency, and ethical behavior using concrete response excerpts.
-5. Repeat prompts where outputs are stochastic, or use temperature 0 when deterministic comparison is more important.
+| Parameter | Effect |
+|-----------|--------|
+| Temperature | Scales logits before softmax. Low (0.0–0.3): deterministic. High (0.7–1.5): creative but may hallucinate. |
+| Top-p (Nucleus Sampling) | Samples from the smallest token set with cumulative probability ≥ p. Low values produce focused, safe output; high values add variety. |
+| Top-k | Limits sampling to k most likely next tokens. Less common than top-p in current practice. |
+| Max Tokens | Caps total output length including input. Prevents runaway responses and controls cost. |
+| Stop Sequences | Strings that halt generation immediately. Useful for structured outputs and section breaks. |
+| Frequency Penalty | Penalizes tokens based on how often they have appeared. Positive values reduce repetition. |
+| Presence Penalty | Penalizes tokens that have appeared at all. Positive values encourage the model to explore new topics. |
 
-#### 2. What parameters can be used to control model responses? Explain in detail.
-
-| Parameter | Description | Effect |
-|-----------|-------------|--------|
-| **Temperature** | Scales logits before softmax. Range: 0.0 – 2.0 (typically). | Low (0.0–0.3): deterministic, repetitive. High (0.7–1.5): creative, diverse, but may hallucinate. |
-| **Top-p** (Nucleus Sampling) | Only samples from the smallest set of tokens whose cumulative probability ≥ `p`. Range: 0.0 – 1.0. | Low (0.1): focused, safe. High (0.9): more varied outputs. Commonly paired with temperature. |
-| **Top-k** | Limits sampling to the `k` most likely next tokens. | Low `k`: constrained, repetitive. High `k`: more diverse. Less commonly used now vs. top-p. |
-| **Max Tokens** | Caps the total output length (input + output count toward the model's context window). | Prevents runaway responses and controls cost. Too low may truncate meaningful output. |
-| **Stop Sequences** | String(s) that cause generation to halt immediately when encountered. | Useful for structured outputs (e.g., stop at `\n\n` for single-paragraph responses, or at `###` for section breaks). |
-| **Frequency Penalty** | Penalizes tokens based on how often they've appeared so far. Range: -2.0 – 2.0. | Positive values reduce repetition. Negative values encourage repeated terms. |
-| **Presence Penalty** | Penalizes tokens that have appeared at all (regardless of frequency). Range: -2.0 – 2.0. | Positive values encourage the model to talk about new topics rather than repeating itself. |
-
-#### 3. Explore prompt engineering techniques: template-based, rule-based, and ML-based prompts. Include challenges and examples.
+#### 3. Prompt engineering techniques
 
 | Technique | Description | Example | Challenges |
 |-----------|-------------|---------|------------|
-| **Template-Based** | Predefined prompt structures with placeholders filled dynamically. | `"Summarize the following article in 3 bullet points:\n\n{article_text}"` | Templates can be too rigid for complex tasks. Requires anticipating all input variations upfront. Poor templates produce low-quality outputs. |
-| **Rule-Based** | Prompts that include explicit instructions, constraints, or formatting rules. | `"Answer only 'Yes' or 'No'. Do not explain.\n\nQuestion: Is the sky blue?"` | Rules may be ignored by the model if not emphatic enough. Conflicting rules confuse the model. Needs iterative testing to get rules right. |
-| **ML-Based (Soft Prompting)** | Trainable prompt embeddings optimized via gradient descent (e.g., prefix tuning, P-tuning). | Fine-tuning a small set of virtual tokens prepended to the input, while keeping the LLM frozen. | Requires training data and compute. Less interpretable — hard to debug why a prompt embedding works. May not generalize across tasks. |
+| Template-Based | Predefined prompt structures with placeholders. | Summarize an article in bullet points using `{article_text}`. | Templates can be rigid; they require anticipating all input variations. |
+| Rule-Based | Prompts with explicit constraints or formatting rules. | Answer only "Yes" or "No" with no explanation. | Rules may be ignored; conflicting rules confuse the model. |
+| ML-Based (Soft Prompting) | Trainable prompt embeddings optimized via gradient descent. | Prefix tuning with a frozen LLM. | Requires training data and compute; less interpretable than hand-crafted prompts. |
 
-**Key considerations when designing prompts:**
-- **Clarity** — Be explicit about the desired format, tone, and scope.
-- **Specificity** — Vague prompts produce vague answers. Include concrete constraints.
-- **Context relevance** — Provide relevant background without overwhelming the model.
-- **Iterative refinement** — Rarely works on the first try. Test, evaluate, and iterate.
-- **Bias awareness** — Prompts can inadvertently steer the model toward biased responses.
+Key design considerations:
 
-#### 4. What is Retrieval-Augmented Generation (RAG) and how is it applied in NLG tasks?
+- Clarity: be explicit about format, tone, and scope.
+- Specificity: include concrete constraints.
+- Context relevance: provide background without overwhelming the model.
+- Iterative refinement: test, evaluate, and iterate.
+- Bias awareness: prompts can inadvertently steer toward biased
+  responses.
 
-**RAG** is a hybrid architecture that combines a **retriever** (searches a knowledge base for relevant documents) with a **generator** (an LLM that produces the final response conditioned on those documents).
+#### 4. Retrieval-Augmented Generation (RAG) in NLG
+
+RAG combines a retriever with a generator:
 
 | Component | Role |
 |-----------|------|
-| Retriever | Indexes a corpus (documents, FAQs, databases). At query time, fetches the top-k most relevant passages via semantic search (embeddings) or keyword search (BM25). |
-| Generator | Receives the user query + retrieved passages as context, then generates a grounded, factual response. |
+| Retriever | Indexes a corpus and fetches top-k relevant passages via semantic or keyword search. |
+| Generator | Receives the query plus retrieved passages as context, then generates a grounded response. |
 
-**Applications in NLG tasks:**
+Applications:
 
 | Task | How RAG Helps |
 |------|---------------|
-| **Question Answering** | Retrieves relevant documents before answering, reducing hallucination and improving factual accuracy. |
-| **Summarization** | Fetches source materials to produce summaries grounded in actual content rather than model memory. |
-| **Dialogue / Chatbots** | Pulls from knowledge bases, product docs, or internal wikis to answer domain-specific queries the base model was never trained on. |
-| **Code Generation** | Retrieves relevant documentation, API references, or similar code examples before generating solutions. |
+| Question Answering | Reduces hallucination and improves factual accuracy. |
+| Summarization | Produces summaries grounded in source material. |
+| Dialogue / Chatbots | Pulls from knowledge bases for domain-specific queries. |
+| Code Generation | Retrieves documentation or examples before generating solutions. |
 
-RAG's key advantage: it decouples **knowledge** (stored in the retriever's index, easily updatable) from **reasoning** (handled by the LLM), enabling factual, current, and domain-specific responses without fine-tuning.
+RAG's key advantage: it decouples knowledge, stored in an updatable
+index, from reasoning handled by the LLM, enabling factual and
+domain-specific responses without fine-tuning.
 
 <div align="center">
 
