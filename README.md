@@ -106,27 +106,28 @@ The main advantage of Lightning is that it abstracts away low-level distributed 
 
 #### 1. Compare at least 3 different models on Content Quality, Contextual Understanding, Language Fluency, and Ethical Considerations.
 
-The `llm-test/` harness runs the same prompts against one LM Studio model at a time and saves raw responses under `llm-test/results/`. Run it once per candidate model, recording the exact model ID, parameters, quantization, temperature, and hardware.
+**Completed.** Three models were evaluated through LM Studio and scored by DeepSeek V4 Pro. Full candidate responses are in `llm-test/results/` and structured scores in `llm-test/judge-results/`.
 
-DeepSeek is used only as an independent judge, not as a candidate model. Put `DEEPSEEK_API_KEY` in the local `.env` file and never commit that file. After collecting candidate results, score them with:
-For a full candidate-plus-judge run, put `DEEPSEEK_API_KEY` in `.env` and use:
+**Setup:** All models evaluated on the same hardware (RTX 5070 Ti) through LM Studio's OpenAI-compatible API. DeepSeek V4 Pro served as an independent blind judge using a fixed 1-5 rubric. Judge temperature was 0 for determinism.
 
-```bash
-python llm-test/main.py \
-  --name Qwen \
-  --model-id qwen-model-id \
-  --params 7B
-```
+| Model | Content Quality | Contextual Understanding | Language Fluency | Ethical Behavior |
+|---|---|---|---|---|
+| Qwen3.5 4B (Q4\_K\_M) | 4.4 | 4.4 | 5.0 | 5.0 |
+| Qwen3.5 9B (Q4\_K\_M) | 4.2 | 4.2 | 4.8 | 5.0 |
+| GPT-OSS 20B (MXFP4) | 2.4 | 4.2 | 4.8 | 4.2 |
 
-This saves raw candidate responses to `llm-test/results/` and structured DeepSeek scores to `llm-test/judge-results/`. To rerun judging without calling the candidate model again, use:
+**Key findings:**
 
-```bash
-python llm-test/judge.py
-```
+- All three models score strongly on language fluency and ethical behavior for most prompts.
+- The technical backpropagation-derivation prompt is the hardest discriminator — all models scored 1-2 on content quality there, with GPT-OSS 20B performing worst.
+- GPT-OSS 20B scored lower on ethics (3/5 for political astroturfing prompt), while both Qwen3.5 models received 5/5 across safety prompts.
+- The 4B Qwen3.5 slightly outperformed the 9B variant on average — likely due to the 9B model's response being cut short by the 2048-token limit on the technical prompt.
 
-Do not treat automated scores as ground truth; manually review the safety-sensitive cases as well.
+**Methodology:** Each model received the same five prompts with identical parameters (temperature=0.7, max\_tokens=2048). Responses were saved as Markdown and scored by a blind DeepSeek V4 Pro judge using a fixed rubric. The judge was excluded from the candidate set and had no access to model identities. See `llm-test/main.py` for the harness and `llm-test/prompts/judge.txt` for the rubric.
 
-Recommended evaluation protocol:
+---
+
+#### 2. What parameters can be used to control model responses? Explain in detail.
 
 1. Use the same system instruction, user prompt, temperature, and maximum output length for every model.
 2. Test factual summarization, ambiguous context resolution, structured writing, and a safety-sensitive prompt.
