@@ -40,6 +40,8 @@ Included sample output:
 
 ![Generated MNIST samples from WandB epoch 19](images/generated_epoch_19.png)
 
+![Dashboard view of WandB loss curves](images/wandb_dashboard.png)
+
 ### Challenges and fixes
 
 - **Python 3.14 and Hydra:** upgraded Hydra from the 1.3 release to the Hydra development version from GitHub because of the `LazyCompletionHelp`/`argparse` incompatibility.
